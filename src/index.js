@@ -492,3 +492,11 @@ export async function main() {
     }
   }
 }
+
+main()
+  .then(() => process.exit(0))
+  .catch(async error => {
+    console.error(error);
+    await clearAllClipboardTimers();
+    process.exit(1);
+  });

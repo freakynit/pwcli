@@ -1,11 +1,11 @@
 {
-  "name": "pwcli",
+  "name": "@freakynit/pwcli",
   "version": "1.0.0",
-  "description": "Secure CLI password manager with encrypted vault and fancy TUI",
+  "description": "A simple, secure Node.js CLI password manager with an interactive TUI, fully encrypted vault storage, and AES-256-GCM encryption.",
   "main": "src/index.js",
   "type": "module",
   "bin": {
-    "pwcli": "./bin/pw.js"
+    "pwcli": "src/index.js"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -17,8 +17,20 @@
     "security",
     "encryption"
   ],
-  "author": "",
+  "author": {
+    "name": "Nitin Bansal",
+    "email": "nitinbansal85@gmail.com",
+    "url": "https://github.com/freakynit"
+  },
   "license": "MIT",
+  "homepage": "https://github.com/freakynit/pwcli#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/freakynit/pwcli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/freakynit/pwcli/issues"
+  },
   "dependencies": {
     "enquirer": "^2.4.1",
     "fuse.js": "^7.0.0",
