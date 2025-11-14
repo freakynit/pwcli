@@ -1,7 +1,7 @@
 import enquirer from 'enquirer';
 import Fuse from 'fuse.js';
 import chalk from 'chalk';
-import { validateVaultPath } from './validation.js';
+import { validateVaultPath, validatePassword } from './validation.js';
 
 const { Select, Input, Password, Confirm, AutoComplete } = enquirer;
 
@@ -78,22 +78,43 @@ export async function promptFuzzySearch(message, choices) {
       limit: 10,
       choices: sortedChoices,
       suggest: (input, choices) => {
-        if (!input) return choices;
+        if (!input || input.trim() === '') return choices;
 
-        // Use Fuse.js for fuzzy matching
-        const fuse = new Fuse(choices, {
-          threshold: 0.4,
-          distance: 100,
+        const searchTerm = input.trim();
+        const getText = c =>
+          typeof c === 'string'
+            ? c
+            : (c.name ?? c.value ?? c.message ?? '');
+
+        // First try exact match (case-insensitive)
+        const exactMatch = choices.find(c => {
+          const text = getText(c);
+          return typeof text === 'string' && text.toLowerCase() === searchTerm.toLowerCase();
+        });
+        
+        if (exactMatch) {
+          return [exactMatch];
+        }
+
+        // Prepare indexed list for fuzzy matching
+        const indexed = choices.map(c => ({ obj: c, text: getText(c) }));
+
+        // Use Fuse.js for fuzzy matching with balanced settings
+        const fuse = new Fuse(indexed, {
+          threshold: 0.5,        // Balanced between strict and permissive
+          distance: 300,         // Moderate distance for meaningful matches
           includeScore: false,
           shouldSort: true,
-          ignoreLocation: true
+          ignoreLocation: true,  // Allow matches anywhere in the string
+          minMatchCharLength: 2, // Require at least 2 characters for fuzzy matching
+          keys: ['text']
         });
 
-        const results = fuse.search(input);
-        const matches = results.map(r => r.item);
+        const results = fuse.search(searchTerm);
+        const matches = results.map(r => r.item.obj);
 
-        // If no matches, return all choices to avoid empty list
-        return matches.length > 0 ? matches : choices;
+        // Return matching choice objects (Enquirer expects original objects)
+        return matches;
       }
     });
 
@@ -117,6 +138,8 @@ export async function showMainMenu() {
     { name: 'list', message: '📋 List all keys' },
     { name: 'change-master', message: '🔐 Change master password' },
     { name: 'change-file', message: '📁 Change vault location' },
+    { name: 'export', message: '📤 Export vault (UNENCRYPTED)' },
+    { name: 'import', message: '📥 Import vault' },
     { name: 'nuke', message: '💣 Nuke all (DANGER)' },
     { name: 'quit', message: '👋 Quit' }
   ];
@@ -209,6 +232,22 @@ export async function runSetupWizard(defaultPath) {
 
   console.log('');
   const password = await promptPassword('Create master password');
+  
+  // Validate password strength
+  const validation = validatePassword(password);
+  if (!validation.valid) {
+    throw new Error(validation.error);
+  }
+  
+  // Show warnings if any
+  if (validation.warnings) {
+    console.log(chalk.yellow('\nPassword recommendations:'));
+    validation.warnings.forEach(warning => {
+      console.log(chalk.yellow(`• ${warning}`));
+    });
+    console.log('');
+  }
+
   const passwordConfirm = await promptPassword('Confirm master password');
 
   if (password !== passwordConfirm) {

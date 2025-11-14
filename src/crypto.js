@@ -27,28 +27,44 @@ export async function encryptJson(obj, password) {
   const salt = crypto.randomBytes(16);
   const iv = crypto.randomBytes(12); // GCM standard is 12 bytes
 
-  // Derive key from password
-  const key = await deriveKey(password, salt);
+  try {
+    // Derive key from password
+    const key = await deriveKey(password, salt);
 
-  // Convert object to JSON string then buffer
-  const plaintext = Buffer.from(JSON.stringify(obj), 'utf8');
+    try {
+      // Convert object to JSON string then buffer
+      const plaintext = Buffer.from(JSON.stringify(obj), 'utf8');
 
-  // Create cipher
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+      try {
+        // Create cipher
+        const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
 
-  // Encrypt
-  const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+        // Encrypt
+        const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
 
-  // Get auth tag
-  const authTag = cipher.getAuthTag();
+        // Get auth tag
+        const authTag = cipher.getAuthTag();
 
-  return {
-    kdf: 'scrypt',
-    salt: salt.toString('base64'),
-    iv: iv.toString('base64'),
-    authTag: authTag.toString('base64'),
-    data: encrypted.toString('base64')
-  };
+        return {
+          kdf: 'scrypt',
+          salt: salt.toString('base64'),
+          iv: iv.toString('base64'),
+          authTag: authTag.toString('base64'),
+          data: encrypted.toString('base64')
+        };
+      } finally {
+        // Wipe plaintext from memory
+        secureWipe(plaintext);
+      }
+    } finally {
+      // Wipe key from memory
+      secureWipe(key);
+    }
+  } finally {
+    // Note: salt and iv are random, not sensitive, but we can still wipe them
+    secureWipe(salt);
+    secureWipe(iv);
+  }
 }
 
 /**
@@ -59,26 +75,46 @@ export async function encryptJson(obj, password) {
  * @throws {Error} If decryption fails (wrong password or corrupted data)
  */
 export async function decryptJson(payload, password) {
+  let salt, iv, authTag, data, key, decrypted;
+  
   try {
     // Parse base64 components
-    const salt = Buffer.from(payload.salt, 'base64');
-    const iv = Buffer.from(payload.iv, 'base64');
-    const authTag = Buffer.from(payload.authTag, 'base64');
-    const data = Buffer.from(payload.data, 'base64');
+    salt = Buffer.from(payload.salt, 'base64');
+    iv = Buffer.from(payload.iv, 'base64');
+    authTag = Buffer.from(payload.authTag, 'base64');
+    data = Buffer.from(payload.data, 'base64');
 
-    // Derive key
-    const key = await deriveKey(password, salt);
+    try {
+      // Derive key
+      key = await deriveKey(password, salt);
 
-    // Create decipher
-    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
-    decipher.setAuthTag(authTag);
+      try {
+        // Create decipher
+        const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+        decipher.setAuthTag(authTag);
 
-    // Decrypt
-    const decrypted = Buffer.concat([decipher.update(data), decipher.final()]);
+        try {
+          // Decrypt
+          decrypted = Buffer.concat([decipher.update(data), decipher.final()]);
 
-    // Parse JSON
-    return JSON.parse(decrypted.toString('utf8'));
+          // Parse JSON
+          return JSON.parse(decrypted.toString('utf8'));
+        } finally {
+          // Wipe decrypted data from memory
+          if (decrypted) secureWipe(decrypted);
+        }
+      } finally {
+        // Wipe key from memory
+        if (key) secureWipe(key);
+      }
+    } finally {
+      // Wipe base64 buffers from memory
+      if (data) secureWipe(data);
+      if (authTag) secureWipe(authTag);
+    }
   } catch (error) {
+    // Log original error for debugging but show generic message to user
+    console.error('Decryption error (for debugging):', error.message);
     throw new Error('Decryption failed - invalid password or corrupted vault');
   }
 }

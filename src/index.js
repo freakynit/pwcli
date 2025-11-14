@@ -17,6 +17,8 @@ import {
   changeMasterPassword,
   moveVault,
   nukeVault,
+  exportVault,
+  importVault,
   vaultExists
 } from './vault.js';
 import {
@@ -352,6 +354,79 @@ async function handleNuke() {
 }
 
 /**
+ * Export vault
+ */
+async function handleExport() {
+  let spinner;
+  try {
+    const vaultPath = await getVaultPath();
+    const password = await promptPassword('Master password');
+    
+    const exportPath = await promptInput('Export file path', {
+      initial: vaultPath.replace('.json', '-export.json')
+    });
+
+    spinner = ora('Exporting vault...').start();
+    await exportVault(vaultPath, password, exportPath);
+    spinner.succeed('Vault exported successfully!');
+    showWarning('⚠️ Remember to delete the export file when done!');
+  } catch (error) {
+    if (spinner) spinner.fail('Failed to export vault');
+    showError(error.message);
+  }
+}
+
+/**
+ * Import vault
+ */
+async function handleImport() {
+  let spinner;
+  try {
+    const importPath = await promptInput('Import file path');
+    
+    // Check if import file exists
+    const fs = await import('fs/promises');
+    try {
+      await fs.access(importPath);
+    } catch {
+      showError('Import file does not exist');
+      return;
+    }
+
+    const vaultPath = await promptInput('New vault location', {
+      initial: importPath.replace('-export.json', '.json')
+    });
+    
+    // Validate the vault path
+    const validation = await validateVaultPath(vaultPath);
+    if (!validation.valid) {
+      showError(validation.error);
+      return;
+    }
+
+    // Check destination and prompt overwrite if needed
+    const exists = await vaultExists(vaultPath);
+    if (exists) {
+      const overwrite = await promptConfirm('Vault already exists at this location. Overwrite?');
+      if (!overwrite) {
+        showWarning('Import cancelled');
+        return;
+      }
+    }
+
+    const password = await promptPassword('Master password for new vault');
+
+    spinner = ora('Importing vault...').start();
+    await importVault(importPath, vaultPath, password, { overwrite: exists });
+    await setVaultPath(vaultPath);
+    spinner.succeed('Vault imported successfully!');
+  } catch (error) {
+    if (spinner) spinner.fail('Failed to import vault');
+    showError(error.message);
+  }
+}
+
+/**
  * Interactive menu mode
  */
 async function runInteractiveMode() {
@@ -384,6 +459,12 @@ async function runInteractiveMode() {
         case 'change-file':
           await handleChangeFile();
           break;
+        case 'export':
+          await handleExport();
+          break;
+        case 'import':
+          await handleImport();
+          break;
         case 'nuke':
           await handleNuke();
           break;
@@ -413,7 +494,7 @@ async function runInteractiveMode() {
 async function handleDirectCommand(command) {
   // Check if vault exists
   const firstRun = await isFirstRun();
-  if (firstRun) {
+  if (firstRun && command !== 'import') {
     await handleFirstRun();
   }
 
@@ -440,6 +521,12 @@ async function handleDirectCommand(command) {
     case 'change-file':
       await handleChangeFile();
       break;
+    case 'export':
+      await handleExport();
+      break;
+    case 'import':
+      await handleImport();
+      break;
     case 'nuke':
       await handleNuke();
       break;
@@ -461,6 +548,12 @@ export async function main() {
     const firstRun = await isFirstRun();
 
     if (firstRun) {
+      // Allow direct import without running setup wizard
+      if (args.length > 0 && args[0] === 'import') {
+        await handleDirectCommand(args[0]);
+        return;
+      }
+
       await handleFirstRun();
 
       // If command was provided, execute it
@@ -468,6 +561,12 @@ export async function main() {
         await handleDirectCommand(args[0]);
         return;
       }
+    }
+
+    // If user invoked import, allow it even if current vault doesn't exist
+    if (args.length > 0 && args[0] === 'import') {
+      await handleDirectCommand(args[0]);
+      return;
     }
 
     // Check vault exists

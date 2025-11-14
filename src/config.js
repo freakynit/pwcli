@@ -34,7 +34,10 @@ export async function loadConfig() {
  * @returns {Promise<void>}
  */
 export async function saveConfig(config) {
-  await fs.writeFile(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
+  await fs.writeFile(CONFIG_FILE, JSON.stringify(config, null, 2), {
+    mode: 0o600,
+    encoding: 'utf8'
+  });
 }
 
 /**

@@ -1,9 +1,6 @@
-# pwcli - Secure CLI Password Manager
+# pwcli - Highly Secure CLI Password Manager
 
-A simple, secure Node.js CLI password manager with an interactive TUI, fully encrypted vault storage, and AES-256-GCM encryption.
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org)
+A simple, but highly secure CLI password manager with an interactive TUI, fully encrypted vault storage, and AES-256-GCM encryption.
 
 ## Demo
 
@@ -11,13 +8,15 @@ A simple, secure Node.js CLI password manager with an interactive TUI, fully enc
 
 ## Features
 
-- 🔐 **Secure Encryption**: AES-256-GCM with scrypt key derivation
-- 🎨 **Fancy Interactive TUI**: Beautiful terminal interface with fuzzy search
-- 🔍 **Live Fuzzy Search**: Quickly find entries as you type
-- 📋 **Clipboard Integration**: Auto-copy passwords with automatic clearing after 20s
-- 🔒 **File Locking**: Prevents concurrent vault corruption
-- 💣 **Secure Deletion**: Best-effort secure wipe when nuking vault
-- 🚀 **Zero Config**: Works out of the box with sensible defaults
+- **Secure Encryption**: AES-256-GCM with scrypt key derivation
+- **Fancy Interactive TUI**: Beautiful terminal interface with fuzzy search
+- **Live Fuzzy Search**: Quickly find entries as you type
+- **Clipboard Integration**: Auto-copy passwords with automatic clearing after 20s
+- **File Locking**: Prevents concurrent vault corruption
+- **Secure Deletion**: Best-effort secure wipe when nuking vault
+- **Import/Export**: Backup and migration capabilities
+- **Audit Logging**: Track all vault operations
+- **Zero Config**: Works out of the box with sensible defaults
 
 ## Security
 
@@ -35,9 +34,13 @@ A simple, secure Node.js CLI password manager with an interactive TUI, fully enc
 - All vault data encrypted at rest
 - No plaintext secrets ever written to disk
 - Fail-closed: operations fail without correct master password
-- Clipboard auto-clear after 20 seconds
-- File locking prevents concurrent write corruption
-- Rate limiting on password attempts (1 per second)
+- Clipboard auto-clears after 20 seconds
+- Concurrent write corruption prevention using file locking
+- Persistent rate limiting on password attempts (1 per second, 10 attempts = 5min lockout)
+- Password strength validation during setup
+- Memory wiping of sensitive data after use
+- Restricted file permissions (0o600) for all sensitive files
+- Comprehensive audit logging of all vault operations
 - Secure wipe on vault deletion (best-effort)
 
 ### Vault File Structure
@@ -68,6 +71,9 @@ The encrypted payload contains:
   "updatedAt": "ISO-8601 timestamp"
 }
 ```
+
+## Important Note
+Your master password is the only key to your vault. If you lose it, your data cannot be recovered. Choose wisely and store it securely!
 
 ## Installation
 
@@ -130,15 +136,17 @@ pwcli
 
 #### Menu Options
 
-- **🔍 Search / Get password**: Fuzzy search for an entry and copy password to clipboard
-- **➕ Add entry**: Create a new password entry
-- **✏️ Update entry**: Modify an existing entry
-- **🗑️ Delete entry**: Remove an entry from vault
-- **📋 List all keys**: Display all entry names (no passwords)
-- **🔐 Change master password**: Update your master password
-- **📁 Change vault location**: Move vault to a new location
-- **💣 Nuke all (DANGER)**: Securely delete entire vault
-- **👋 Quit**: Exit pwcli
+- **Search / Get password**: Fuzzy search for an entry and copy password to clipboard
+- **Add entry**: Create a new password entry
+- **Update entry**: Modify an existing entry
+- **Delete entry**: Remove an entry from vault
+- **List all keys**: Display all entry names (no passwords)
+- **Change master password**: Update your master password
+- **Change vault location**: Move vault to a new location
+- **Export vault**: Export encrypted vault to unencrypted JSON (use with caution!)
+- **Import vault**: Import entries from exported JSON file
+- **Nuke all (DANGER)**: Securely delete entire vault
+- **Quit**: Exit pwcli
 
 ### Direct Commands
 
@@ -166,6 +174,12 @@ pwcli change-master
 # Change vault location
 pwcli change-file
 
+# Export vault (unencrypted export!)
+pwcli export
+
+# Import vault
+pwcli import
+
 # Nuke vault (dangerous!)
 pwcli nuke
 ```
@@ -183,7 +197,7 @@ pwcli nuke
 #### Getting a Password
 
 1. Run `pwcli` or `pwcli search`
-2. Enter master password
+2. Enter master password (rate limited)
 3. Start typing to fuzzy search
 4. Press Enter on the desired entry
 5. Password is copied to clipboard
@@ -197,6 +211,21 @@ pwcli nuke
 4. Enter new username/password
 5. Changes saved and re-encrypted
 
+#### Exporting Vault
+
+1. Run `pwcli` and select "Export vault"
+2. Enter master password for verification
+3. Choose export location (default: vault-name-export.json)
+4. **⚠️ WARNING**: Export file is unencrypted - keep secure and delete when done
+
+#### Importing Vault
+
+1. Run `pwcli` and select "Import vault"
+2. Enter path to export file
+3. Choose new vault location
+4. Set master password for new vault
+5. Entries are imported and encrypted
+
 ## Configuration
 
 pwcli stores minimal configuration in `~/.pwcli.json`:
@@ -208,6 +237,34 @@ pwcli stores minimal configuration in `~/.pwcli.json`:
 ```
 
 **No secrets are stored in this file.** Only the path to your encrypted vault.
+
+## Audit Logging
+
+All vault operations are logged for security auditing in `~/.pwcli-audit.json`:
+
+- **vault_access**: Successful/failed vault unlock attempts
+- **vault_create**: New vault creation
+- **vault_export**: Export operations
+- **vault_import**: Import operations
+
+Each log entry includes:
+- Timestamp (ISO-8601)
+- Action performed
+- Additional details
+- Success/failure status
+- Process ID
+
+Logs are automatically rotated to keep only the last 1000 entries and use secure permissions (0o600).
+
+## Releavnt Files That Are Created on Your System
+
+pwcli creates these files in your home directory:
+
+- `~/.pw-vault.json` - Your encrypted password vault
+- `~/.pwcli.json` - Configuration (vault path only)
+- `~/.pwcli-attempts.json` - Rate limiting attempts (auto-created)
+- `~/.pwcli-audit.json` - Audit log of all operations (auto-created)
+- Export files you create (unencrypted - use with caution!)
 
 ## Troubleshooting
 
@@ -261,6 +318,21 @@ The "Nuke" operation permanently destroys your vault:
 
 **This is irreversible!** All passwords will be permanently lost. After nuking, you can run `pwcli` again to set up a fresh vault.
 
+### Secure Deletion Limitations
+
+⚠️ **Important**: The secure deletion feature has inherent limitations:
+
+- **SSDs with Wear Leveling**: Solid-state drives with wear leveling algorithms may not overwrite data in the same physical location, potentially leaving copies in hidden sectors
+- **Copy-on-Write Filesystems**: Filesystems like ZFS, Btrfs, or modern Linux filesystems may keep copies in snapshots or other locations
+- **Filesystem Journaling**: Some filesystems maintain journals that may temporarily store file copies
+- **Operating System Caching**: The OS may maintain cached copies in memory or swap files
+
+**Recommendation**: For truly secure deletion, consider:
+- Using full-disk encryption at the OS level
+- Physically destroying storage media for maximum security
+- Using secure deletion tools like `shred` (Linux) or secure wipe utilities (macOS/Windows)
+- Storing the vault on encrypted filesystems (LUKS, FileVault, BitLocker)
+
 ## Best Practices
 
 ### Password Security
@@ -283,36 +355,6 @@ The "Nuke" operation permanently destroys your vault:
 - Be aware of screen sharing when using pwcli
 - Use list/search instead of displaying all passwords
 
-## Technical Details
-
-### Dependencies
-
-- **enquirer**: Interactive prompts and autocomplete
-- **fuse.js**: Fuzzy search algorithm
-- **clipboardy**: Cross-platform clipboard access
-- **chalk**: Terminal colors
-- **ora**: Loading spinners
-- **proper-lockfile**: File locking
-
-### File Structure
-
-```
-pwcli/
-├── bin/
-│   └── pw.js           # Executable entry point
-├── src/
-│   ├── index.js        # Main application logic
-│   ├── crypto.js       # Encryption/decryption
-│   ├── vault.js        # Vault operations
-│   ├── config.js       # Configuration management
-│   ├── clipboard.js    # Clipboard operations
-│   ├── ui.js           # User interface
-│   ├── validation.js   # Input validation
-│   └── ratelimit.js    # Rate limiting for password attempts
-├── package.json
-└── README.md
-```
-
 ## License
 
 MIT
@@ -324,7 +366,6 @@ Contributions welcome! Please ensure:
 - Code follows existing style
 - Security considerations are maintained
 - No plaintext secrets in logs or errors
-- Tests added for new features (if applicable)
 
 ## Disclaimer
 
